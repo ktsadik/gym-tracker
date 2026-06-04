@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>מעקב אימונים</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;background:#f6f7f9;color:#111;padding-bottom:72px}
+    header{background:white;border-bottom:1px solid #ddd;padding:12px}
+    h1{font-size:22px;margin:0 0 8px}
+    main{padding:10px;max-width:1100px;margin:auto}
+    button{border:0;border-radius:10px;padding:10px 12px;font-weight:bold;margin:3px;cursor:pointer}
+    .primary{background:#1769ff;color:white}.secondary{background:#e8edf7}.danger{background:#ffe2e2;color:#9b0000}
+    .card{background:white;border:1px solid #ddd;border-radius:14px;margin:10px 0;padding:12px}
+    .small{font-size:12px;color:#666;margin-top:8px;line-height:1.5}
+    .hidden{display:none}
+    .profiles,.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+    label{font-size:12px;color:#555}
+    input,select{width:100%;box-sizing:border-box;border:1px solid #ccc;border-radius:8px;padding:8px;font-size:15px;background:white}
+    nav{position:fixed;bottom:0;right:0;left:0;background:white;border-top:1px solid #ccc;display:flex;z-index:10}
+    nav button{flex:1;border-radius:0;margin:0;padding:14px 4px;background:white;color:#333}
+    nav button.active{background:#1769ff;color:white}
+    .group{background:white;border:1px solid #ddd;border-radius:14px;margin:12px 0;overflow:hidden}
+    .groupHeader{padding:10px 12px;background:#f0f2f5;font-weight:bold;display:flex;justify-content:space-between;align-items:center}
+    .groupDone{background:#e9fff0}
+    .groupCount{font-size:13px;color:#555}
+    .workoutTable{width:100%;border-collapse:collapse;background:white;table-layout:fixed}
+    .workoutTable th,.workoutTable td{border-bottom:1px solid #e7e7e7;padding:7px 4px;text-align:center;font-size:13px}
+    .workoutTable th{background:#fafafa;color:#555;font-weight:bold}
+    .doneRow{background:#f1fff5}
+    .doneBox{transform:scale(1.3)}
+    .exerciseName{font-size:12px;color:#444;text-align:right;padding:3px 8px 8px 8px;border-bottom:1px solid #eee}
+    .cellInput{border:1px solid #ccc;border-radius:7px;padding:6px 3px;font-size:14px;text-align:center}
+    .machineCell{font-weight:bold;color:#333}
+    .historyBlock{overflow:auto}
+    table.historyTable{width:100%;border-collapse:collapse;min-width:720px;background:white}
+    table.historyTable th,table.historyTable td{border:1px solid #ddd;padding:7px;font-size:13px;text-align:right}
+    table.historyTable th{background:#f0f2f5}
+    .manageCard{background:white;border:1px solid #ddd;border-radius:14px;margin:10px 0;padding:12px}
+    .filters{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .radioLine{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
+    .radioLine input{width:auto}
+    .summaryRow{display:flex;justify-content:space-between;gap:8px;align-items:center}
+    .muted{color:#666}
+    @media(max-width:700px){
+      main{padding:6px}
+      header{padding:10px}
+      h1{font-size:20px}
+      button{padding:9px 10px}
+      .workoutTable th,.workoutTable td{font-size:12px;padding:6px 2px}
+      .cellInput{font-size:13px;padding:5px 2px}
+      .filters,.profiles,.grid{grid-template-columns:1fr 1fr}
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>מעקב אימונים</h1>
+  <div class="small" id="status">טוען...</div>
+</header>
+
+<main>
+  <section id="pageWorkout"></section>
+  <section id="pageHistory" class="hidden"></section>
+  <section id="pageManage" class="hidden"></section>
+</main>
+
+<nav>
+  <button id="navWorkout" class="active">🏋️ אימון</button>
+  <button id="navHistory">📊 היסטוריה</button>
+  <button id="navManage">⚙️ ניהול</button>
+</nav>
+
+<input id="importFile" type="file" accept="application/json" style="display:none">
+
+<script>
+(function(){
+  function uid(){ return "id_" + Date.now() + "_" + Math.floor(Math.random()*1000000000); }
+  function todayIso(){ return new Date().toISOString().slice(0,10); }
+  function makeExercise(area,name,machine,sets,reps,weight){
+    return {id:uid(), area:area||"", name:name||"", machine:machine||"", sets:sets||"", reps:reps||"", weight:weight||"", done:false};
+  }
+  function defaultExercises(){
+    return [
+      makeExercise("סיבולת לב-ריאה","Elliptical / אליפטי","","","","15 דקות"),
+      makeExercise("רגליים","Squat / סקוואט","3","3","10","12.5"),
+      makeExercise("רגליים","Leg Extension / פשיטות ברך","23","3","10","25"),
+      makeExercise("רגליים","Hip Adduction / מקרבי ירך","27","3","10","45"),
+      makeExercise("רגליים","Hip Abduction / מרחיקי ירך","28","3","10","45"),
+      makeExercise("חזה","Chest Press / לחיצת חזה","29","3","10","17.5"),
+      makeExercise("חזה","Fly's / פרפר","35","3","10","27.5"),
+      makeExercise("גב","Lat Pull Down / משיכת פולי","34","3","10","30"),
+      makeExercise("גב","Row / חתירה","36","3","10","22.5"),
+      makeExercise("כתפיים","Shoulder Press / לחיצת כתפיים","30","3","10","10"),
+      makeExercise("כתפיים","Back Raise / הרחקה לאחור","35","3","10","20"),
+      makeExercise("יד קדמית","Biceps Curls / כפיפת מרפקים","31","3","10","15"),
+      makeExercise("יד אחורית","Triceps Extension / פשיטות מרפקים","32","3","10","37.5")
+    ];
+  }
+  function makePlan(name, exercises){
+    return {id:uid(), name:name||"אימון חדש", workoutDate:"", exercises:exercises||[], history:[]};
+  }
+
+  var page = "workout";
+  var historyMode = "sessions";
+  var openedSessionId = "";
+  var state;
+  try { state = JSON.parse(localStorage.getItem("gymTrackerMultiPlanV1")); } catch(e){ state = null; }
+  if(!state){
+    var plan = makePlan("אימון A", defaultExercises());
+    state = {activeProfile:"יעקב", profiles:{"יעקב":{activePlanId:plan.id, plans:[plan]}}};
+  }
+
+  function migrate(){
+    if(!state.profiles) state.profiles = {};
+    Object.keys(state.profiles).forEach(function(profileName){
+      var p = state.profiles[profileName];
+
+      // migrate old single-plan profile
+      if(p.exercises && !p.plans){
+        var migratedPlan = makePlan("אימון A", p.exercises);
+        migratedPlan.workoutDate = p.workoutDate || "";
+        migratedPlan.history = p.history || [];
+        p.plans = [migratedPlan];
+        p.activePlanId = migratedPlan.id;
+        delete p.exercises; delete p.history; delete p.workoutDate;
+      }
+
+      if(!p.plans) p.plans = [];
+      if(!p.plans.length) p.plans.push(makePlan("אימון A", []));
+      if(!p.activePlanId) p.activePlanId = p.plans[0].id;
+
+      p.plans.forEach(function(plan){
+        if(!plan.id) plan.id = uid();
+        if(!plan.name) plan.name = "אימון";
+        if(!plan.exercises) plan.exercises = [];
+        if(!plan.history) plan.history = [];
+        if(!plan.workoutDate) plan.workoutDate = "";
+        plan.exercises.forEach(function(x){
+          if(!x.id) x.id = uid();
+          if(x.done == null) x.done = false;
+          if(x.area == null) x.area = "";
+          if(x.name == null) x.name = "";
+          if(x.machine == null) x.machine = "";
+          if(x.sets == null) x.sets = "";
+          if(x.reps == null) x.reps = "";
+          if(x.weight == null) x.weight = "";
+          delete x.note;
+        });
+        plan.history.forEach(function(s){
+          if(!s.id) s.id = uid();
+          if(!s.planId) s.planId = plan.id;
+          if(!s.planName) s.planName = plan.name;
+          if(!s.isoDate) s.isoDate = "";
+          (s.exercises || []).forEach(function(x){ delete x.note; });
+        });
+      });
+    });
+  }
+  migrate();
+
+  function profile(){
+    if(!state.activeProfile) state.activeProfile = Object.keys(state.profiles)[0] || "יעקב";
+    if(!state.profiles[state.activeProfile]){
+      var plan = makePlan("אימון A", []);
+      state.profiles[state.activeProfile] = {activePlanId:plan.id, plans:[plan]};
+    }
+    return state.profiles[state.activeProfile];
+  }
+  function currentPlan(){
+    var p = profile();
+    var plan = p.plans.find(function(x){return x.id === p.activePlanId;}) || p.plans[0];
+    p.activePlanId = plan.id;
+    return plan;
+  }
+
+  function esc(s){
+    return String(s == null ? "" : s).replace(/[&<>"']/g,function(m){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m];
+    });
+  }
+
+  function save(){
+    try { localStorage.setItem("gymTrackerMultiPlanV1", JSON.stringify(state)); } catch(e){}
+    var plan = currentPlan();
+    document.getElementById("status").textContent =
+      "מתאמן: " + state.activeProfile + " | תוכנית: " + plan.name + " | " +
+      (plan.workoutDate ? "אימון פעיל: " + plan.workoutDate + " | " : "אין אימון פעיל | ") +
+      "היסטוריה: " + plan.history.length + " אימונים בתוכנית הזו";
+  }
+
+  function showPage(name){
+    page = name;
+    openedSessionId = "";
+    document.getElementById("pageWorkout").className = name==="workout" ? "" : "hidden";
+    document.getElementById("pageHistory").className = name==="history" ? "" : "hidden";
+    document.getElementById("pageManage").className = name==="manage" ? "" : "hidden";
+    document.getElementById("navWorkout").className = name==="workout" ? "active" : "";
+    document.getElementById("navHistory").className = name==="history" ? "active" : "";
+    document.getElementById("navManage").className = name==="manage" ? "active" : "";
+    render();
+  }
+
+  function cloneExercises(arr){
+    return arr.map(function(x){
+      return {area:x.area||"", name:x.name||"", machine:x.machine||"", sets:x.sets||"", reps:x.reps||"", weight:x.weight||"", done:!!x.done};
+    });
+  }
+
+  function hasDoneWorkout(){
+    return currentPlan().exercises.some(function(x){ return x.done; });
+  }
+
+  function saveCurrentWorkout(force){
+    var plan = currentPlan();
+    if(!force && !hasDoneWorkout()) return false;
+    var d = new Date();
+    plan.history.unshift({
+      id:uid(),
+      planId:plan.id,
+      planName:plan.name,
+      date:plan.workoutDate || d.toLocaleString("he-IL"),
+      isoDate:todayIso(),
+      savedAt:d.toLocaleString("he-IL"),
+      exercises:cloneExercises(plan.exercises) // Option A: save all, including not done
+    });
+    return true;
+  }
+
+  function groupExercises(exercises){
+    var groups = [], map = {};
+    exercises.forEach(function(ex){
+      var area = ex.area || "ללא קבוצה";
+      if(!map[area]){ map[area] = {area:area, exercises:[]}; groups.push(map[area]); }
+      map[area].exercises.push(ex);
+    });
+    return groups;
+  }
+
+  function render(){
+    if(page === "workout") renderWorkout();
+    if(page === "history") renderHistory();
+    if(page === "manage") renderManage();
+    save();
+  }
+
+  function renderWorkout(){
+    var plan = currentPlan();
+    var html = '<div class="card">' +
+      '<button class="primary" id="btnStart">התחל אימון חדש / שמור את הקודם</button>' +
+      '<button class="secondary" id="btnFinish">סיים ושמור אימון</button>' +
+      '<div class="small">באימון אפשר לערוך רק סטים, חזרות ומשקל. שם תרגיל, אזור ומכשיר נערכים בניהול.</div>' +
+      '</div>';
+
+    var groups = groupExercises(plan.exercises);
+    if(!groups.length){
+      html += '<div class="card">אין תרגילים בתוכנית הזו. עבור ל־ניהול והוסף תרגילים.</div>';
+    }
+    groups.forEach(function(g){
+      var total = g.exercises.length;
+      var done = g.exercises.filter(function(x){return x.done;}).length;
+      var complete = total > 0 && done === total;
+      html += '<div class="group">' +
+        '<div class="groupHeader '+(complete?'groupDone':'')+'">' +
+          '<span>'+(complete?'✅ ':'⬜ ')+esc(g.area)+'</span>' +
+          '<span class="groupCount">'+done+'/'+total+'</span>' +
+        '</div>' +
+        '<table class="workoutTable">' +
+          '<colgroup><col style="width:13%"><col style="width:17%"><col style="width:20%"><col style="width:20%"><col style="width:30%"></colgroup>' +
+          '<thead><tr><th>בוצע</th><th>מכשיר</th><th>סטים</th><th>חזרות</th><th>משקל</th></tr></thead><tbody>';
+      g.exercises.forEach(function(ex){
+        html += '<tr class="'+(ex.done?'doneRow':'')+'">' +
+          '<td><input class="doneBox" type="checkbox" data-id="'+ex.id+'" data-field="done" '+(ex.done?'checked':'')+'></td>' +
+          '<td class="machineCell">'+esc(ex.machine)+'</td>' +
+          '<td><input class="cellInput" data-id="'+ex.id+'" data-field="sets" value="'+esc(ex.sets)+'"></td>' +
+          '<td><input class="cellInput" data-id="'+ex.id+'" data-field="reps" value="'+esc(ex.reps)+'"></td>' +
+          '<td><input class="cellInput" data-id="'+ex.id+'" data-field="weight" value="'+esc(ex.weight)+'"></td>' +
+        '</tr><tr class="'+(ex.done?'doneRow':'')+'"><td colspan="5" class="exerciseName">'+esc(ex.name)+'</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    });
+    document.getElementById("pageWorkout").innerHTML = html;
+  }
+
+  function getHistoryFilters(){
+    return {
+      from:(document.getElementById("filterFrom")||{}).value || "",
+      to:(document.getElementById("filterTo")||{}).value || "",
+      exercise:(document.getElementById("filterExercise")||{}).value || ""
+    };
+  }
+  function filteredSessions(){
+    var f = getHistoryFilters();
+    return currentPlan().history.filter(function(s){
+      var d = s.isoDate || "";
+      if(f.from && d && d < f.from) return false;
+      if(f.to && d && d > f.to) return false;
+      return true;
+    });
+  }
+  function exerciseOptions(){
+    var names = {};
+    currentPlan().exercises.forEach(function(ex){ if(ex.name) names[ex.name]=true; });
+    currentPlan().history.forEach(function(s){ (s.exercises||[]).forEach(function(ex){ if(ex.name) names[ex.name]=true; }); });
+    return Object.keys(names).sort().map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join("");
+  }
+
+  function renderHistory(){
+    var plan = currentPlan();
+    var selectedExercise = (document.getElementById("filterExercise")||{}).value || "";
+    var existingFrom = (document.getElementById("filterFrom")||{}).value || "";
+    var existingTo = (document.getElementById("filterTo")||{}).value || "";
+    var html = '<div class="card">' +
+      '<div class="filters"><div><label>מתאריך</label><input type="date" id="filterFrom" value="'+esc(existingFrom)+'"></div>' +
+      '<div><label>עד תאריך</label><input type="date" id="filterTo" value="'+esc(existingTo)+'"></div></div>' +
+      '<div class="radioLine"><label><input type="radio" name="historyMode" value="sessions" '+(historyMode==="sessions"?"checked":"")+'> אימונים</label>' +
+      '<label><input type="radio" name="historyMode" value="exercise" '+(historyMode==="exercise"?"checked":"")+'> לפי תרגיל / התקדמות</label></div>';
+    if(historyMode === "exercise"){
+      html += '<div style="margin-top:8px"><label>בחר תרגיל</label><select id="filterExercise"><option value="">בחר...</option>'+exerciseOptions()+'</select></div>';
+    }
+    html += '</div><div id="historyResults"></div>';
+    document.getElementById("pageHistory").innerHTML = html;
+    if(selectedExercise) document.getElementById("filterExercise").value = selectedExercise;
+    renderHistoryResults();
+  }
+
+  function renderHistoryResults(){
+    var holder = document.getElementById("historyResults");
+    if(!holder) return;
+    var sessions = filteredSessions();
+    if(historyMode === "sessions"){
+      if(!sessions.length){ holder.innerHTML = '<div class="card">אין אימונים בטווח התאריכים הזה.</div>'; return; }
+      var html = "";
+      sessions.forEach(function(s){
+        var doneCount = (s.exercises||[]).filter(function(x){return x.done;}).length;
+        html += '<div class="card"><div class="summaryRow"><div><b>'+esc(s.date)+'</b><div class="small">'+doneCount+' מתוך '+(s.exercises||[]).length+' תרגילים | '+esc(s.planName||"")+'</div></div>' +
+          '<div><button class="secondary" data-action="toggleSession" data-id="'+s.id+'">'+(openedSessionId===s.id?'סגור':'פתח')+'</button><button class="danger" data-action="deleteSession" data-id="'+s.id+'">מחק</button></div></div>';
+        if(openedSessionId === s.id){
+          html += '<div class="historyBlock"><table class="historyTable" style="margin-top:10px"><thead><tr><th>✓</th><th>אזור</th><th>תרגיל</th><th>מכשיר</th><th>סטים</th><th>חזרות</th><th>משקל</th></tr></thead><tbody>';
+          (s.exercises||[]).forEach(function(ex){
+            html += '<tr><td>'+(ex.done?'✓':'')+'</td><td>'+esc(ex.area)+'</td><td>'+esc(ex.name)+'</td><td>'+esc(ex.machine)+'</td><td>'+esc(ex.sets)+'</td><td>'+esc(ex.reps)+'</td><td>'+esc(ex.weight)+'</td></tr>';
+          });
+          html += '</tbody></table></div>';
+        }
+        html += '</div>';
+      });
+      holder.innerHTML = html;
+    } else {
+      var exName = (document.getElementById("filterExercise")||{}).value || "";
+      if(!exName){ holder.innerHTML = '<div class="card">בחר תרגיל כדי לראות התקדמות.</div>'; return; }
+      var rows = [];
+      sessions.slice().reverse().forEach(function(s){
+        (s.exercises||[]).forEach(function(ex){
+          if(ex.name === exName && ex.done){
+            rows.push({date:s.date, isoDate:s.isoDate, sets:ex.sets, reps:ex.reps, weight:ex.weight, machine:ex.machine});
+          }
+        });
+      });
+      if(!rows.length){ holder.innerHTML = '<div class="card">אין ביצועים שמורים לתרגיל הזה בטווח התאריכים.</div>'; return; }
+      var first = rows[0].weight, last = rows[rows.length-1].weight;
+      var html = '<div class="card"><b>'+esc(exName)+'</b><div class="small">רשומות: '+rows.length+' | התחלה: '+esc(first)+' | אחרון: '+esc(last)+'</div></div>';
+      html += '<div class="card historyBlock"><table class="historyTable"><thead><tr><th>תאריך</th><th>מכשיר</th><th>סטים</th><th>חזרות</th><th>משקל</th></tr></thead><tbody>';
+      rows.slice().reverse().forEach(function(r){
+        html += '<tr><td>'+esc(r.date)+'</td><td>'+esc(r.machine)+'</td><td>'+esc(r.sets)+'</td><td>'+esc(r.reps)+'</td><td>'+esc(r.weight)+'</td></tr>';
+      });
+      html += '</tbody></table></div>';
+      holder.innerHTML = html;
+    }
+  }
+
+  function profileOptions(){
+    return Object.keys(state.profiles).map(function(name){
+      return '<option value="'+esc(name)+'" '+(name===state.activeProfile?'selected':'')+'>'+esc(name)+'</option>';
+    }).join("");
+  }
+  function planOptions(){
+    var p = profile();
+    return p.plans.map(function(plan){
+      return '<option value="'+esc(plan.id)+'" '+(plan.id===p.activePlanId?'selected':'')+'>'+esc(plan.name)+'</option>';
+    }).join("");
+  }
+
+  function renderManage(){
+    var p = profile();
+    var plan = currentPlan();
+    var html = '<div class="card"><div class="profiles"><div><label>מתאמן</label><select id="profileSelect">'+profileOptions()+'</select></div><div><label>שם מתאמן חדש</label><input id="newProfileName" placeholder="לדוגמה: הבן שלי"></div></div>' +
+      '<button class="secondary" id="btnAddProfile">הוסף מתאמן</button></div>';
+
+    html += '<div class="card"><div class="profiles"><div><label>תוכנית אימון</label><select id="planSelect">'+planOptions()+'</select></div><div><label>שם תוכנית חדשה</label><input id="newPlanName" placeholder="לדוגמה: אימון B / רגליים"></div></div>' +
+      '<button class="secondary" id="btnAddPlan">הוסף תוכנית</button><button class="secondary" id="btnRenamePlan">שנה שם תוכנית</button><button class="danger" id="btnDeletePlan">מחק תוכנית</button></div>';
+
+    html += '<div class="card"><button class="secondary" id="btnAddExercise">הוסף תרגיל לתוכנית</button><button class="secondary" id="btnExport">ייצוא גיבוי</button><button class="secondary" id="btnImport">ייבוא גיבוי</button><button class="danger" id="btnReset">איפוס מתאמן נוכחי</button></div>';
+
+    plan.exercises.forEach(function(ex, idx){
+      html += '<div class="manageCard">' +
+        '<label>שם תרגיל</label><input data-id="'+ex.id+'" data-field="name" value="'+esc(ex.name)+'">' +
+        '<label>אזור גוף / קבוצה</label><input data-id="'+ex.id+'" data-field="area" value="'+esc(ex.area)+'">' +
+         '<div class="grid">' +
+          '<div><label>מכשיר</label><input data-id="'+ex.id+'" data-field="machine" value="'+esc(ex.machine)+'"></div>' +
+          '<div><label>סטים</label><input data-id="'+ex.id+'" data-field="sets" value="'+esc(ex.sets)+'"></div>' +
+          '<div><label>חזרות</label><input data-id="'+ex.id+'" data-field="reps" value="'+esc(ex.reps)+'"></div>' +
+          '<div><label>משקל / זמן</label><input data-id="'+ex.id+'" data-field="weight" value="'+esc(ex.weight)+'"></div>' +
+        '</div>' +
+        '<button class="secondary" data-action="up" data-index="'+idx+'">למעלה</button><button class="secondary" data-action="down" data-index="'+idx+'">למטה</button><button class="danger" data-action="delete" data-id="'+ex.id+'">מחק תרגיל</button>' +
+      '</div>';
+    });
+    document.getElementById("pageManage").innerHTML = html;
+  }
+
+  document.addEventListener("change", function(e){
+    var t = e.target;
+    if(t.id === "profileSelect"){ state.activeProfile = t.value; render(); return; }
+    if(t.id === "planSelect"){ profile().activePlanId = t.value; openedSessionId=""; render(); return; }
+    if(t.id === "importFile"){ importData(t.files[0]); return; }
+    if(t.name === "historyMode"){ historyMode = t.value; openedSessionId=""; renderHistory(); return; }
+    if(t.id === "filterFrom" || t.id === "filterTo" || t.id === "filterExercise"){ renderHistoryResults(); return; }
+
+    var id = t.getAttribute("data-id"), field = t.getAttribute("data-field");
+    if(id && field){
+      var ex = currentPlan().exercises.find(function(x){return x.id===id;});
+      if(ex){
+        ex[field] = (field==="done") ? t.checked : t.value;
+        if(field==="done" || field==="area" || field==="name") render(); else save();
+      }
+    }
+  });
+
+  document.addEventListener("click", function(e){
+    var t = e.target;
+    if(t.id === "navWorkout") return showPage("workout");
+    if(t.id === "navHistory") return showPage("history");
+    if(t.id === "navManage") return showPage("manage");
+
+    if(t.id === "btnStart"){
+      if(hasDoneWorkout() && confirm("לשמור את האימון הנוכחי בהיסטוריה לפני פתיחת אימון חדש?")) saveCurrentWorkout(true);
+      currentPlan().exercises.forEach(function(x){x.done=false;});
+      currentPlan().workoutDate = new Date().toLocaleString("he-IL");
+      render();
+    }
+    if(t.id === "btnFinish"){
+      if(!hasDoneWorkout() && !confirm("לא סומנו תרגילים. לשמור בכל זאת?")) return;
+      saveCurrentWorkout(true);
+      currentPlan().exercises.forEach(function(x){x.done=false;});
+      currentPlan().workoutDate = "";
+      showPage("history");
+    }
+    if(t.id === "btnAddExercise"){
+      currentPlan().exercises.push(makeExercise("","תרגיל חדש","","3","10",""));
+      render();
+    }
+    if(t.id === "btnAddProfile"){
+      var input = document.getElementById("newProfileName");
+      var name = input.value.trim();
+      if(!name) return alert("צריך להקליד שם מתאמן.");
+      if(state.profiles[name]) return alert("כבר קיים מתאמן בשם הזה.");
+      var plan = makePlan("אימון A", []);
+      state.profiles[name] = {activePlanId:plan.id, plans:[plan]};
+      state.activeProfile = name;
+      render();
+    }
+    if(t.id === "btnAddPlan"){
+      var inputPlan = document.getElementById("newPlanName");
+      var planName = inputPlan.value.trim() || "אימון חדש";
+      var newPlan = makePlan(planName, []);
+      profile().plans.push(newPlan);
+      profile().activePlanId = newPlan.id;
+      render();
+    }
+    if(t.id === "btnRenamePlan"){
+      var newName = document.getElementById("newPlanName").value.trim();
+      if(!newName) return alert("הקלד שם חדש לתוכנית.");
+      currentPlan().name = newName;
+      currentPlan().history.forEach(function(s){ s.planName = newName; });
+      render();
+    }
+    if(t.id === "btnDeletePlan"){
+      var p = profile();
+      if(p.plans.length <= 1) return alert("אי אפשר למחוק את התוכנית היחידה של המתאמן.");
+      if(confirm("למחוק את התוכנית הנוכחית כולל ההיסטוריה שלה?")){
+        var id = currentPlan().id;
+        p.plans = p.plans.filter(function(x){return x.id !== id;});
+        p.activePlanId = p.plans[0].id;
+        render();
+      }
+    }
+    if(t.id === "btnExport"){
+      var blob = new Blob([JSON.stringify(state,null,2)], {type:"application/json"});
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "gym-tracker-multi-plan-backup.json";
+      a.click();
+    }
+    if(t.id === "btnImport") document.getElementById("importFile").click();
+    if(t.id === "btnReset"){
+      if(confirm("לאפס את המתאמן הנוכחי? זה מוחק את כל התוכניות וההיסטוריה שלו.")){
+        var plan = makePlan("אימון A", defaultExercises());
+        state.profiles[state.activeProfile] = {activePlanId:plan.id, plans:[plan]};
+        render();
+      }
+    }
+
+    var action = t.getAttribute("data-action");
+    if(action === "toggleSession"){
+      openedSessionId = openedSessionId === t.getAttribute("data-id") ? "" : t.getAttribute("data-id");
+      renderHistoryResults();
+    }
+    if(action === "delete"){
+      if(confirm("למחוק את התרגיל?")){
+        currentPlan().exercises = currentPlan().exercises.filter(function(x){return x.id !== t.getAttribute("data-id");});
+        render();
+      }
+    }
+    if(action === "deleteSession"){
+      if(confirm("למחוק את האימון מההיסטוריה?")){
+        currentPlan().history = currentPlan().history.filter(function(x){return x.id !== t.getAttribute("data-id");});
+        render();
+      }
+    }
+    if(action === "up" || action === "down"){
+      var arr = currentPlan().exercises;
+      var i = parseInt(t.getAttribute("data-index"),10);
+      var j = i + (action==="up" ? -1 : 1);
+      if(j >= 0 && j < arr.length){ var tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp; render(); }
+    }
+  });
+
+  function importData(file){
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var imported = JSON.parse(reader.result);
+        if(!imported.profiles) throw "bad";
+        state = imported;
+        migrate();
+        render();
+        alert("הגיבוי נטען בהצלחה.");
+      }catch(e){ alert("קובץ הגיבוי לא תקין."); }
+    };
+    reader.readAsText(file);
+  }
+
+  showPage("workout");
+})();
+</script>
+</body>
+</html>   
