@@ -41,7 +41,12 @@
     .radioLine{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
     .radioLine input{width:auto}
     .summaryRow{display:flex;justify-content:space-between;gap:8px;align-items:center}
-    .muted{color:#666}
+    .progressBox{background:#fff;border:1px solid #ddd;border-radius:14px;margin:10px 0;padding:12px}
+    .progressText{font-weight:bold;margin-bottom:8px}
+    .progressBar{height:12px;background:#eee;border-radius:999px;overflow:hidden}
+    .progressFill{height:100%;background:#1769ff;width:0%}
+    .favoriteBadge{color:#d49300;font-weight:bold}
+    .searchBox{margin-top:10px}
     @media(max-width:700px){
       main{padding:6px}
       header{padding:10px}
@@ -98,17 +103,25 @@
     ];
   }
   function makePlan(name, exercises){
-    return {id:uid(), name:name||"אימון חדש", workoutDate:"", exercises:exercises||[], history:[]};
+    return {id:uid(), name:name||"אימון חדש", isFavorite:false, workoutDate:"", exercises:exercises||[], history:[]};
   }
 
   var page = "workout";
   var historyMode = "sessions";
   var openedSessionId = "";
+  var workoutSearch = "";
   var state;
-  try { state = JSON.parse(localStorage.getItem("gymTrackerMultiPlanV1")); } catch(e){ state = null; }
+  try { state = JSON.parse(localStorage.getItem("gymTrackerMultiPlanV2")); } catch(e){ state = null; }
+
+  // Try migration from previous key
+  if(!state){
+    try { state = JSON.parse(localStorage.getItem("gymTrackerMultiPlanV1")); } catch(e){}
+  }
+
   if(!state){
     var plan = makePlan("אימון A", defaultExercises());
-    state = {activeProfile:"יעקב", profiles:{"יעקב":{activePlanId:plan.id, plans:[plan]}}};
+    plan.isFavorite = true;
+    state = {activeProfile:"מתאמן 1", profiles:{"מתאמן 1":{activePlanId:plan.id, plans:[plan]}}};
   }
 
   function migrate(){
@@ -116,7 +129,6 @@
     Object.keys(state.profiles).forEach(function(profileName){
       var p = state.profiles[profileName];
 
-      // migrate old single-plan profile
       if(p.exercises && !p.plans){
         var migratedPlan = makePlan("אימון A", p.exercises);
         migratedPlan.workoutDate = p.workoutDate || "";
@@ -133,6 +145,7 @@
       p.plans.forEach(function(plan){
         if(!plan.id) plan.id = uid();
         if(!plan.name) plan.name = "אימון";
+        if(plan.isFavorite == null) plan.isFavorite = false;
         if(!plan.exercises) plan.exercises = [];
         if(!plan.history) plan.history = [];
         if(!plan.workoutDate) plan.workoutDate = "";
@@ -160,7 +173,7 @@
   migrate();
 
   function profile(){
-    if(!state.activeProfile) state.activeProfile = Object.keys(state.profiles)[0] || "יעקב";
+    if(!state.activeProfile) state.activeProfile = Object.keys(state.profiles)[0] || "מתאמן 1";
     if(!state.profiles[state.activeProfile]){
       var plan = makePlan("אימון A", []);
       state.profiles[state.activeProfile] = {activePlanId:plan.id, plans:[plan]};
@@ -181,10 +194,10 @@
   }
 
   function save(){
-    try { localStorage.setItem("gymTrackerMultiPlanV1", JSON.stringify(state)); } catch(e){}
+    try { localStorage.setItem("gymTrackerMultiPlanV2", JSON.stringify(state)); } catch(e){}
     var plan = currentPlan();
     document.getElementById("status").textContent =
-      "מתאמן: " + state.activeProfile + " | תוכנית: " + plan.name + " | " +
+      "מתאמן: " + state.activeProfile + " | תוכנית: " + plan.name + (plan.isFavorite ? " ⭐" : "") + " | " +
       (plan.workoutDate ? "אימון פעיל: " + plan.workoutDate + " | " : "אין אימון פעיל | ") +
       "היסטוריה: " + plan.history.length + " אימונים בתוכנית הזו";
   }
@@ -211,6 +224,14 @@
     return currentPlan().exercises.some(function(x){ return x.done; });
   }
 
+  function workoutStats(){
+    var arr = currentPlan().exercises;
+    var total = arr.length;
+    var done = arr.filter(function(x){return x.done;}).length;
+    var percent = total ? Math.round(done / total * 100) : 0;
+    return {done:done,total:total,percent:percent};
+  }
+
   function saveCurrentWorkout(force){
     var plan = currentPlan();
     if(!force && !hasDoneWorkout()) return false;
@@ -222,7 +243,7 @@
       date:plan.workoutDate || d.toLocaleString("he-IL"),
       isoDate:todayIso(),
       savedAt:d.toLocaleString("he-IL"),
-      exercises:cloneExercises(plan.exercises) // Option A: save all, including not done
+      exercises:cloneExercises(plan.exercises) // Option A
     });
     return true;
   }
@@ -246,19 +267,36 @@
 
   function renderWorkout(){
     var plan = currentPlan();
+    var stats = workoutStats();
     var html = '<div class="card">' +
       '<button class="primary" id="btnStart">התחל אימון חדש / שמור את הקודם</button>' +
       '<button class="secondary" id="btnFinish">סיים ושמור אימון</button>' +
+      '<div class="searchBox"><label>חיפוש לפי שם תרגיל או מספר מכשיר</label><input id="workoutSearch" value="'+esc(workoutSearch)+'" placeholder="לדוגמה: 23 או Squat או סקוואט"></div>' +
       '<div class="small">באימון אפשר לערוך רק סטים, חזרות ומשקל. שם תרגיל, אזור ומכשיר נערכים בניהול.</div>' +
       '</div>';
 
-    var groups = groupExercises(plan.exercises);
-    if(!groups.length){
+    html += '<div class="progressBox"><div class="progressText">התקדמות: '+stats.done+'/'+stats.total+' בוצעו ('+stats.percent+'%)</div><div class="progressBar"><div class="progressFill" style="width:'+stats.percent+'%"></div></div></div>';
+
+    var term = workoutSearch.trim().toLowerCase();
+    var visibleExercises = plan.exercises.filter(function(ex){
+      if(!term) return true;
+      return (String(ex.name||"").toLowerCase().indexOf(term) >= 0) ||
+             (String(ex.machine||"").toLowerCase().indexOf(term) >= 0) ||
+             (String(ex.area||"").toLowerCase().indexOf(term) >= 0);
+    });
+
+    var groups = groupExercises(visibleExercises);
+    if(!plan.exercises.length){
       html += '<div class="card">אין תרגילים בתוכנית הזו. עבור ל־ניהול והוסף תרגילים.</div>';
+    } else if(!visibleExercises.length){
+      html += '<div class="card">לא נמצאו תרגילים שמתאימים לחיפוש.</div>';
     }
+
     groups.forEach(function(g){
-      var total = g.exercises.length;
-      var done = g.exercises.filter(function(x){return x.done;}).length;
+      // Group count calculated from all exercises in that group, not only filtered
+      var allInGroup = plan.exercises.filter(function(x){ return (x.area || "ללא קבוצה") === g.area; });
+      var total = allInGroup.length;
+      var done = allInGroup.filter(function(x){return x.done;}).length;
       var complete = total > 0 && done === total;
       html += '<div class="group">' +
         '<div class="groupHeader '+(complete?'groupDone':'')+'">' +
@@ -306,7 +344,6 @@
   }
 
   function renderHistory(){
-    var plan = currentPlan();
     var selectedExercise = (document.getElementById("filterExercise")||{}).value || "";
     var existingFrom = (document.getElementById("filterFrom")||{}).value || "";
     var existingTo = (document.getElementById("filterTo")||{}).value || "";
@@ -333,7 +370,9 @@
       var html = "";
       sessions.forEach(function(s){
         var doneCount = (s.exercises||[]).filter(function(x){return x.done;}).length;
-        html += '<div class="card"><div class="summaryRow"><div><b>'+esc(s.date)+'</b><div class="small">'+doneCount+' מתוך '+(s.exercises||[]).length+' תרגילים | '+esc(s.planName||"")+'</div></div>' +
+        var total = (s.exercises||[]).length;
+        var percent = total ? Math.round(doneCount/total*100) : 0;
+        html += '<div class="card"><div class="summaryRow"><div><b>'+esc(s.date)+'</b><div class="small">'+doneCount+' מתוך '+total+' תרגילים ('+percent+'%) | '+esc(s.planName||"")+'</div></div>' +
           '<div><button class="secondary" data-action="toggleSession" data-id="'+s.id+'">'+(openedSessionId===s.id?'סגור':'פתח')+'</button><button class="danger" data-action="deleteSession" data-id="'+s.id+'">מחק</button></div></div>';
         if(openedSessionId === s.id){
           html += '<div class="historyBlock"><table class="historyTable" style="margin-top:10px"><thead><tr><th>✓</th><th>אזור</th><th>תרגיל</th><th>מכשיר</th><th>סטים</th><th>חזרות</th><th>משקל</th></tr></thead><tbody>';
@@ -376,26 +415,27 @@
   function planOptions(){
     var p = profile();
     return p.plans.map(function(plan){
-      return '<option value="'+esc(plan.id)+'" '+(plan.id===p.activePlanId?'selected':'')+'>'+esc(plan.name)+'</option>';
+      return '<option value="'+esc(plan.id)+'" '+(plan.id===p.activePlanId?'selected':'')+'>'+esc(plan.name)+(plan.isFavorite?' ⭐':'')+'</option>';
     }).join("");
   }
 
   function renderManage(){
     var p = profile();
     var plan = currentPlan();
-    var html = '<div class="card"><div class="profiles"><div><label>מתאמן</label><select id="profileSelect">'+profileOptions()+'</select></div><div><label>שם מתאמן חדש</label><input id="newProfileName" placeholder="לדוגמה: הבן שלי"></div></div>' +
-      '<button class="secondary" id="btnAddProfile">הוסף מתאמן</button></div>';
+    var html = '<div class="card"><div class="profiles"><div><label>מתאמן</label><select id="profileSelect">'+profileOptions()+'</select></div><div><label>שם מתאמן חדש / שינוי שם</label><input id="profileNameInput" placeholder="שם מתאמן"></div></div>' +
+      '<button class="secondary" id="btnAddProfile">הוסף מתאמן</button><button class="secondary" id="btnRenameProfile">שנה שם מתאמן</button></div>';
 
-    html += '<div class="card"><div class="profiles"><div><label>תוכנית אימון</label><select id="planSelect">'+planOptions()+'</select></div><div><label>שם תוכנית חדשה</label><input id="newPlanName" placeholder="לדוגמה: אימון B / רגליים"></div></div>' +
-      '<button class="secondary" id="btnAddPlan">הוסף תוכנית</button><button class="secondary" id="btnRenamePlan">שנה שם תוכנית</button><button class="danger" id="btnDeletePlan">מחק תוכנית</button></div>';
+    html += '<div class="card"><div class="profiles"><div><label>תוכנית אימון</label><select id="planSelect">'+planOptions()+'</select></div><div><label>שם תוכנית חדשה / שינוי שם</label><input id="newPlanName" placeholder="לדוגמה: אימון B / רגליים"></div></div>' +
+      '<div class="small">תוכנית מועדפת: <span class="favoriteBadge">'+(plan.isFavorite?'⭐ כן':'לא')+'</span></div>' +
+      '<button class="secondary" id="btnAddPlan">הוסף תוכנית</button><button class="secondary" id="btnRenamePlan">שנה שם תוכנית</button><button class="secondary" id="btnSetFavorite">סמן כמועדפת</button><button class="danger" id="btnDeletePlan">מחק תוכנית</button></div>';
 
-    html += '<div class="card"><button class="secondary" id="btnAddExercise">הוסף תרגיל לתוכנית</button><button class="secondary" id="btnExport">ייצוא גיבוי</button><button class="secondary" id="btnImport">ייבוא גיבוי</button><button class="danger" id="btnReset">איפוס מתאמן נוכחי</button></div>';
+    html += '<div class="card"><button class="secondary" id="btnAddExercise">הוסף תרגיל לתוכנית</button><button class="secondary" id="btnExport">ייצוא גיבוי</button><button class="secondary" id="btnImport">ייבוא גיבוי</button><button class="danger" id="btnReset">איפוס מתאמן</button></div>';
 
     plan.exercises.forEach(function(ex, idx){
       html += '<div class="manageCard">' +
         '<label>שם תרגיל</label><input data-id="'+ex.id+'" data-field="name" value="'+esc(ex.name)+'">' +
         '<label>אזור גוף / קבוצה</label><input data-id="'+ex.id+'" data-field="area" value="'+esc(ex.area)+'">' +
-         '<div class="grid">' +
+        '<div class="grid">' +
           '<div><label>מכשיר</label><input data-id="'+ex.id+'" data-field="machine" value="'+esc(ex.machine)+'"></div>' +
           '<div><label>סטים</label><input data-id="'+ex.id+'" data-field="sets" value="'+esc(ex.sets)+'"></div>' +
           '<div><label>חזרות</label><input data-id="'+ex.id+'" data-field="reps" value="'+esc(ex.reps)+'"></div>' +
@@ -425,6 +465,14 @@
     }
   });
 
+  document.addEventListener("input", function(e){
+    if(e.target.id === "workoutSearch"){
+      workoutSearch = e.target.value;
+      renderWorkout();
+      save();
+    }
+  });
+
   document.addEventListener("click", function(e){
     var t = e.target;
     if(t.id === "navWorkout") return showPage("workout");
@@ -435,13 +483,23 @@
       if(hasDoneWorkout() && confirm("לשמור את האימון הנוכחי בהיסטוריה לפני פתיחת אימון חדש?")) saveCurrentWorkout(true);
       currentPlan().exercises.forEach(function(x){x.done=false;});
       currentPlan().workoutDate = new Date().toLocaleString("he-IL");
+      workoutSearch = "";
       render();
     }
     if(t.id === "btnFinish"){
+      var stats = workoutStats();
+      if(!stats.total){
+        alert("אין תרגילים לשמירה.");
+        return;
+      }
       if(!hasDoneWorkout() && !confirm("לא סומנו תרגילים. לשמור בכל זאת?")) return;
+      if(stats.done < stats.total){
+        if(!confirm("סומנו "+stats.done+" מתוך "+stats.total+" תרגילים ("+stats.percent+"%). לשמור את האימון בכל זאת?")) return;
+      }
       saveCurrentWorkout(true);
       currentPlan().exercises.forEach(function(x){x.done=false;});
       currentPlan().workoutDate = "";
+      workoutSearch = "";
       showPage("history");
     }
     if(t.id === "btnAddExercise"){
@@ -449,13 +507,26 @@
       render();
     }
     if(t.id === "btnAddProfile"){
-      var input = document.getElementById("newProfileName");
+      var input = document.getElementById("profileNameInput");
       var name = input.value.trim();
       if(!name) return alert("צריך להקליד שם מתאמן.");
       if(state.profiles[name]) return alert("כבר קיים מתאמן בשם הזה.");
       var plan = makePlan("אימון A", []);
+      plan.isFavorite = true;
       state.profiles[name] = {activePlanId:plan.id, plans:[plan]};
       state.activeProfile = name;
+      render();
+    }
+    if(t.id === "btnRenameProfile"){
+      var inputRename = document.getElementById("profileNameInput");
+      var newProfileName = inputRename.value.trim();
+      var oldName = state.activeProfile;
+      if(!newProfileName) return alert("הקלד שם חדש למתאמן.");
+      if(newProfileName === oldName) return;
+      if(state.profiles[newProfileName]) return alert("כבר קיים מתאמן בשם הזה.");
+      state.profiles[newProfileName] = state.profiles[oldName];
+      delete state.profiles[oldName];
+      state.activeProfile = newProfileName;
       render();
     }
     if(t.id === "btnAddPlan"){
@@ -473,6 +544,12 @@
       currentPlan().history.forEach(function(s){ s.planName = newName; });
       render();
     }
+    if(t.id === "btnSetFavorite"){
+      var p = profile();
+      p.plans.forEach(function(x){ x.isFavorite = false; });
+      currentPlan().isFavorite = true;
+      render();
+    }
     if(t.id === "btnDeletePlan"){
       var p = profile();
       if(p.plans.length <= 1) return alert("אי אפשר למחוק את התוכנית היחידה של המתאמן.");
@@ -487,16 +564,12 @@
       var blob = new Blob([JSON.stringify(state,null,2)], {type:"application/json"});
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "gym-tracker-multi-plan-backup.json";
+      a.download = "gym-tracker-backup.json";
       a.click();
     }
     if(t.id === "btnImport") document.getElementById("importFile").click();
     if(t.id === "btnReset"){
-      if(confirm("לאפס את המתאמן הנוכחי? זה מוחק את כל התוכניות וההיסטוריה שלו.")){
-        var plan = makePlan("אימון A", defaultExercises());
-        state.profiles[state.activeProfile] = {activePlanId:plan.id, plans:[plan]};
-        render();
-      }
+      resetProfile();
     }
 
     var action = t.getAttribute("data-action");
@@ -524,6 +597,43 @@
     }
   });
 
+  function resetProfile(){
+    var p = profile();
+    var fav = p.plans.find(function(x){ return x.isFavorite; });
+    if(fav){
+      var choice = prompt("איפוס מתאמן:\\n1 = השאר רק את התוכנית המועדפת עם הערכים האחרונים\\n2 = נקה הכל לגמרי\\nבטל = לא לאפס", "1");
+      if(choice === null) return;
+      if(choice === "1"){
+        if(!confirm("למחוק את כל ההיסטוריה וכל התוכניות הלא מועדפות, ולהשאיר רק את התוכנית המועדפת?")) return;
+        fav.history = [];
+        fav.workoutDate = "";
+        fav.exercises.forEach(function(x){ x.done = false; });
+        p.plans = [fav];
+        p.activePlanId = fav.id;
+        render();
+        return;
+      }
+      if(choice === "2"){
+        if(!confirm("למחוק את כל התוכניות וההיסטוריה של המתאמן?")) return;
+        var emptyPlan = makePlan("אימון A", []);
+        emptyPlan.isFavorite = true;
+        p.plans = [emptyPlan];
+        p.activePlanId = emptyPlan.id;
+        render();
+        return;
+      }
+      alert("בחירה לא תקינה. האיפוס בוטל.");
+    } else {
+      if(confirm("אין תוכנית מועדפת. לבצע איפוס מלא ולנקות את כל התוכניות וההיסטוריה?")){
+        var emptyPlan2 = makePlan("אימון A", []);
+        emptyPlan2.isFavorite = true;
+        p.plans = [emptyPlan2];
+        p.activePlanId = emptyPlan2.id;
+        render();
+      }
+    }
+  }
+
   function importData(file){
     if(!file) return;
     var reader = new FileReader();
@@ -544,4 +654,4 @@
 })();
 </script>
 </body>
-</html>   
+</html>
