@@ -41,7 +41,7 @@
     .radioLine{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px}
     .radioLine input{width:auto}
     .summaryRow{display:flex;justify-content:space-between;gap:8px;align-items:center}
-    .progressBox{background:#fff;border:1px solid #ddd;border-radius:14px;margin:10px 0;padding:12px}
+    .progressBox{background:#fff;border:1px solid #ddd;border-radius:14px;margin:10px 0;padding:12px;position:sticky;top:0;z-index:9;box-shadow:0 2px 8px rgba(0,0,0,.08)}
     .progressText{font-weight:bold;margin-bottom:8px}
     .progressBar{height:12px;background:#eee;border-radius:999px;overflow:hidden}
     .progressFill{height:100%;background:#1769ff;width:0%}
@@ -275,7 +275,8 @@
       '<div class="small">באימון אפשר לערוך רק סטים, חזרות ומשקל. שם תרגיל, אזור ומכשיר נערכים בניהול.</div>' +
       '</div>';
 
-    html += '<div class="progressBox"><div class="progressText">התקדמות: '+stats.done+'/'+stats.total+' בוצעו ('+stats.percent+'%)</div><div class="progressBar"><div class="progressFill" style="width:'+stats.percent+'%"></div></div></div>';
+    var remaining = Math.max(stats.total - stats.done, 0);
+    html += '<div class="progressBox"><div class="progressText">התקדמות: '+stats.done+'/'+stats.total+' ('+stats.percent+'%) • נותר '+remaining+'</div><div class="progressBar"><div class="progressFill" style="width:'+stats.percent+'%"></div></div></div>';
 
     var groups = groupExercises(plan.exercises);
     if(!plan.exercises.length){
@@ -289,10 +290,11 @@
       var total = allInGroup.length;
       var done = allInGroup.filter(function(x){return x.done;}).length;
       var complete = total > 0 && done === total;
+      var groupRemaining = Math.max(total - done, 0);
       html += '<div class="group" data-group-search="'+esc(g.area).toLowerCase()+'">' +
         '<div class="groupHeader '+(complete?'groupDone':'')+'">' +
-          '<span>'+(complete?'✅ ':'⬜ ')+esc(g.area)+'</span>' +
-          '<span class="groupCount">'+done+'/'+total+'</span>' +
+          '<span>'+(complete?'✅ ':'⚠️ ')+esc(g.area)+'</span>' +
+          '<span class="groupCount">'+done+'/'+total+(complete?'':' • נותר '+groupRemaining)+'</span>' +
         '</div>' +
         '<table class="workoutTable">' +
           '<colgroup><col style="width:13%"><col style="width:17%"><col style="width:20%"><col style="width:20%"><col style="width:30%"></colgroup>' +
