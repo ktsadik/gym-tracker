@@ -138,6 +138,7 @@
         delete p.exercises; delete p.history; delete p.workoutDate;
       }
 
+      if(!p.searchKeyboardMode) p.searchKeyboardMode = "numeric";
       if(!p.plans) p.plans = [];
       if(!p.plans.length) p.plans.push(makePlan("אימון A", []));
       if(!p.activePlanId) p.activePlanId = p.plans[0].id;
@@ -176,7 +177,7 @@
     if(!state.activeProfile) state.activeProfile = Object.keys(state.profiles)[0] || "מתאמן 1";
     if(!state.profiles[state.activeProfile]){
       var plan = makePlan("אימון A", []);
-      state.profiles[state.activeProfile] = {activePlanId:plan.id, plans:[plan]};
+      state.profiles[state.activeProfile] = {activePlanId:plan.id, searchKeyboardMode:"numeric", plans:[plan]};
     }
     return state.profiles[state.activeProfile];
   }
@@ -271,7 +272,7 @@
     var html = '<div class="card">' +
       '<button class="primary" id="btnStart">התחל אימון חדש / שמור את הקודם</button>' +
       '<button class="secondary" id="btnFinish">סיים ושמור אימון</button>' +
-      '<div class="searchBox"><label>חיפוש לפי שם תרגיל או מספר מכשיר</label><input id="workoutSearch" value="'+esc(workoutSearch)+'" placeholder="לדוגמה: 23 או Squat או סקוואט"></div>' +
+      '<div class="searchBox"><label>חיפוש תרגיל</label><input id="workoutSearch" inputmode="'+(profile().searchKeyboardMode === "text" ? "text" : "numeric")+'" value="'+esc(workoutSearch)+'" placeholder="לדוגמה: 23 או Squat או סקוואט"></div>' +
       '<div class="small">באימון אפשר לערוך רק סטים, חזרות ומשקל. שם תרגיל, אזור ומכשיר נערכים בניהול.</div>' +
       '</div>';
 
@@ -418,7 +419,8 @@
     var p = profile();
     var plan = currentPlan();
     var html = '<div class="card"><div class="profiles"><div><label>מתאמן</label><select id="profileSelect">'+profileOptions()+'</select></div><div><label>שם מתאמן חדש / שינוי שם</label><input id="profileNameInput" placeholder="שם מתאמן"></div></div>' +
-      '<button class="secondary" id="btnAddProfile">הוסף מתאמן</button><button class="secondary" id="btnRenameProfile">שנה שם מתאמן</button></div>';
+      '<button class="secondary" id="btnAddProfile">הוסף מתאמן</button><button class="secondary" id="btnRenameProfile">שנה שם מתאמן</button>' +
+      '<div style="margin-top:10px"><label>ברירת מחדל למקלדת חיפוש באימון</label><select id="searchKeyboardMode"><option value="numeric" '+(p.searchKeyboardMode==="numeric"?"selected":"")+'>ספרות</option><option value="text" '+(p.searchKeyboardMode==="text"?"selected":"")+'>אותיות</option></select><div class="small">החיפוש עדיין עובד לפי מספר מכשיר, שם תרגיל ואזור גוף. ההגדרה משנה רק איזו מקלדת תיפתח בטלפון.</div></div></div>';
 
     html += '<div class="card"><div class="profiles"><div><label>תוכנית אימון</label><select id="planSelect">'+planOptions()+'</select></div><div><label>שם תוכנית חדשה / שינוי שם</label><input id="newPlanName" placeholder="לדוגמה: אימון B / רגליים"></div></div>' +
       '<div class="small">תוכנית מועדפת: <span class="favoriteBadge">'+(plan.isFavorite?'⭐ כן':'לא')+'</span></div>' +
@@ -446,6 +448,7 @@
     var t = e.target;
     if(t.id === "profileSelect"){ state.activeProfile = t.value; render(); return; }
     if(t.id === "planSelect"){ profile().activePlanId = t.value; openedSessionId=""; render(); return; }
+    if(t.id === "searchKeyboardMode"){ profile().searchKeyboardMode = t.value; render(); return; }
     if(t.id === "importFile"){ importData(t.files[0]); return; }
     if(t.name === "historyMode"){ historyMode = t.value; openedSessionId=""; renderHistory(); return; }
     if(t.id === "filterFrom" || t.id === "filterTo" || t.id === "filterExercise"){ renderHistoryResults(); return; }
@@ -529,7 +532,7 @@
       if(state.profiles[name]) return alert("כבר קיים מתאמן בשם הזה.");
       var plan = makePlan("אימון A", []);
       plan.isFavorite = true;
-      state.profiles[name] = {activePlanId:plan.id, plans:[plan]};
+      state.profiles[name] = {activePlanId:plan.id, searchKeyboardMode:"numeric", plans:[plan]};
       state.activeProfile = name;
       render();
     }
