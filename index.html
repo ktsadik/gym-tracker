@@ -46,7 +46,7 @@
     .progressBar{height:12px;background:#eee;border-radius:999px;overflow:hidden}
     .progressFill{height:100%;background:#1769ff;width:0%}
     .favoriteBadge{color:#d49300;font-weight:bold}
-    .searchBox{margin-top:10px}
+    .searchBox{margin-top:10px}.searchRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}.keyboardToggle{white-space:nowrap;padding:9px 10px}
     @media(max-width:700px){
       main{padding:6px}
       header{padding:10px}
@@ -272,7 +272,7 @@
     var html = '<div class="card">' +
       '<button class="primary" id="btnStart">התחל אימון חדש / שמור את הקודם</button>' +
       '<button class="secondary" id="btnFinish">סיים ושמור אימון</button>' +
-      '<div class="searchBox"><label>חיפוש תרגיל</label><input id="workoutSearch" inputmode="'+(profile().searchKeyboardMode === "text" ? "text" : "numeric")+'" value="'+esc(workoutSearch)+'" placeholder="לדוגמה: 23 או Squat או סקוואט"></div>' +
+      '<div class="searchBox"><label>חיפוש תרגיל</label><div class="searchRow"><input id="workoutSearch" type="search" inputmode="'+(profile().searchKeyboardMode === "text" ? "text" : "numeric")+'" value="'+esc(workoutSearch)+'" placeholder="לדוגמה: 23 או Squat או סקוואט"><button class="secondary keyboardToggle" id="btnToggleSearchKeyboard" type="button">'+(profile().searchKeyboardMode === "text" ? "🔤 אותיות" : "🔢 ספרות")+'</button></div><div class="small">הכפתור מחליף רק את סוג המקלדת; החיפוש עדיין עובד גם לפי מספר וגם לפי שם.</div></div>' +
       '<div class="small">באימון אפשר לערוך רק סטים, חזרות ומשקל. שם תרגיל, אזור ומכשיר נערכים בניהול.</div>' +
       '</div>';
 
@@ -497,6 +497,18 @@
     if(t.id === "navWorkout") return showPage("workout");
     if(t.id === "navHistory") return showPage("history");
     if(t.id === "navManage") return showPage("manage");
+
+    if(t.id === "btnToggleSearchKeyboard"){
+      profile().searchKeyboardMode = profile().searchKeyboardMode === "text" ? "numeric" : "text";
+      renderWorkout();
+      var searchInput = document.getElementById("workoutSearch");
+      if(searchInput){
+        searchInput.focus();
+        searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+      }
+      save();
+      return;
+    }
 
     if(t.id === "btnStart"){
       if(hasDoneWorkout() && confirm("לשמור את האימון הנוכחי בהיסטוריה לפני פתיחת אימון חדש?")) saveCurrentWorkout(true);
