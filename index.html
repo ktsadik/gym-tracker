@@ -110,6 +110,7 @@
   var historyMode = "sessions";
   var openedSessionId = "";
   var workoutSearch = "";
+  var temporarySearchKeyboardMode = null;
   var state;
   try { state = JSON.parse(localStorage.getItem("gymTrackerMultiPlanV2")); } catch(e){ state = null; }
 
@@ -272,7 +273,7 @@
     var html = '<div class="card">' +
       '<button class="primary" id="btnStart">התחל אימון חדש / שמור את הקודם</button>' +
       '<button class="secondary" id="btnFinish">סיים ושמור אימון</button>' +
-      '<div class="searchBox"><label>חיפוש תרגיל</label><div class="searchRow"><input id="workoutSearch" type="search" inputmode="'+(profile().searchKeyboardMode === "text" ? "text" : "numeric")+'" value="'+esc(workoutSearch)+'" placeholder="לדוגמה: 23 או Squat או סקוואט"><button class="secondary keyboardToggle" id="btnToggleSearchKeyboard" type="button">'+(profile().searchKeyboardMode === "text" ? "🔤 אותיות" : "🔢 ספרות")+'</button></div><div class="small">הכפתור מחליף רק את סוג המקלדת; החיפוש עדיין עובד גם לפי מספר וגם לפי שם.</div></div>' +
+      '<div class="searchBox"><label>חיפוש תרגיל</label><div class="searchRow"><input id="workoutSearch" type="search" inputmode="'+((temporarySearchKeyboardMode || profile().searchKeyboardMode) === "text" ? "text" : "numeric")+'" value="'+esc(workoutSearch)+'" placeholder="לדוגמה: 23 או Squat או סקוואט"><button class="secondary keyboardToggle" id="btnToggleSearchKeyboard" type="button">'+((temporarySearchKeyboardMode || profile().searchKeyboardMode) === "text" ? "🔤 אותיות" : "🔢 ספרות")+'</button></div><div class="small">הכפתור מחליף זמנית רק את סוג המקלדת. ההגדרה הקבועה נמצאת בניהול.</div></div>' +
       '<div class="small">באימון אפשר לערוך רק סטים, חזרות ומשקל. שם תרגיל, אזור ומכשיר נערכים בניהול.</div>' +
       '</div>';
 
@@ -446,9 +447,9 @@
 
   document.addEventListener("change", function(e){
     var t = e.target;
-    if(t.id === "profileSelect"){ state.activeProfile = t.value; render(); return; }
-    if(t.id === "planSelect"){ profile().activePlanId = t.value; openedSessionId=""; render(); return; }
-    if(t.id === "searchKeyboardMode"){ profile().searchKeyboardMode = t.value; render(); return; }
+    if(t.id === "profileSelect"){ state.activeProfile = t.value; temporarySearchKeyboardMode = null; render(); return; }
+    if(t.id === "planSelect"){ profile().activePlanId = t.value; openedSessionId=""; temporarySearchKeyboardMode = null; render(); return; }
+    if(t.id === "searchKeyboardMode"){ profile().searchKeyboardMode = t.value; temporarySearchKeyboardMode = null; render(); return; }
     if(t.id === "importFile"){ importData(t.files[0]); return; }
     if(t.name === "historyMode"){ historyMode = t.value; openedSessionId=""; renderHistory(); return; }
     if(t.id === "filterFrom" || t.id === "filterTo" || t.id === "filterExercise"){ renderHistoryResults(); return; }
@@ -494,19 +495,19 @@
 
   document.addEventListener("click", function(e){
     var t = e.target;
-    if(t.id === "navWorkout") return showPage("workout");
+    if(t.id === "navWorkout"){ temporarySearchKeyboardMode = null; return showPage("workout"); }
     if(t.id === "navHistory") return showPage("history");
     if(t.id === "navManage") return showPage("manage");
 
     if(t.id === "btnToggleSearchKeyboard"){
-      profile().searchKeyboardMode = profile().searchKeyboardMode === "text" ? "numeric" : "text";
+      var currentMode = temporarySearchKeyboardMode || profile().searchKeyboardMode || "numeric";
+      temporarySearchKeyboardMode = currentMode === "text" ? "numeric" : "text";
       renderWorkout();
       var searchInput = document.getElementById("workoutSearch");
       if(searchInput){
         searchInput.focus();
         searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
       }
-      save();
       return;
     }
 
@@ -515,6 +516,7 @@
       currentPlan().exercises.forEach(function(x){x.done=false;});
       currentPlan().workoutDate = new Date().toLocaleString("he-IL");
       workoutSearch = "";
+      temporarySearchKeyboardMode = null;
       render();
     }
     if(t.id === "btnFinish"){
